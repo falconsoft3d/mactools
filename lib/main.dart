@@ -111,7 +111,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _initialLoad() async {
-    final coreStr = await _runCommand('sysctl', ['-n', 'hw.ncpu']);
+    final coreStr = await _runCommand('/usr/sbin/sysctl', ['-n', 'hw.ncpu']);
     _coreCount = int.tryParse(coreStr.trim()) ?? 1;
     _cpuHistory = List.generate(_coreCount, (index) => List.generate(30, (i) => 0.0));
     await _refreshData();
@@ -119,7 +119,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
 
   Future<void> _updateUsageData() async {
     // RAM Update - Using vm_stat for more reliable data on macOS
-    final vmStat = await _runCommand('vm_stat', []);
+    final vmStat = await _runCommand('/usr/bin/vm_stat', []);
     final pageSizeMatch = RegExp(r'page size of (\d+) bytes').firstMatch(vmStat);
     if (pageSizeMatch != null) {
       final pageSize = int.parse(pageSizeMatch.group(1)!);
@@ -149,7 +149,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     }
 
     // Temperature Update
-    final batteryInfo = await _runCommand('ioreg', ['-rn', 'AppleSmartBattery']);
+    final batteryInfo = await _runCommand('/usr/sbin/ioreg', ['-rn', 'AppleSmartBattery']);
     final bTempMatch = RegExp(r'"Temperature" = (\d+)').firstMatch(batteryInfo);
     if (bTempMatch != null) {
       final tempC = double.parse(bTempMatch.group(1)!) / 100;
@@ -160,7 +160,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     }
 
     // CPU Update
-    final cpuOutput = await _runCommand('top', ['-l', '1', '-n', '0']);
+    final cpuOutput = await _runCommand('/usr/bin/top', ['-l', '1', '-n', '0']);
     double totalCpu = 0.0;
     
     // More flexible regex to find CPU usage percentages
@@ -180,7 +180,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     }
 
     if (_coreCount < 1) {
-      final coreStr = await _runCommand('sysctl', ['-n', 'hw.ncpu']);
+      final coreStr = await _runCommand('/usr/sbin/sysctl', ['-n', 'hw.ncpu']);
       _coreCount = int.tryParse(coreStr.trim()) ?? 1;
       if (_cpuHistory.isEmpty) {
         _cpuHistory = List.generate(_coreCount, (index) => List.generate(30, (i) => 0.0));
@@ -205,11 +205,11 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     final Map<String, Map<String, String>> newData = {};
     
     try {
-      final procName = await _runCommand('sysctl', ['-n', 'machdep.cpu.brand_string']);
-      final physicalCores = await _runCommand('sysctl', ['-n', 'hw.physicalcpu']);
-      final logicalCores = await _runCommand('sysctl', ['-n', 'hw.logicalcpu']);
-      final l2Size = await _runCommand('sysctl', ['-n', 'hw.l2cachesize']);
-      final l3Size = await _runCommand('sysctl', ['-n', 'hw.l3cachesize']);
+      final procName = await _runCommand('/usr/sbin/sysctl', ['-n', 'machdep.cpu.brand_string']);
+      final physicalCores = await _runCommand('/usr/sbin/sysctl', ['-n', 'hw.physicalcpu']);
+      final logicalCores = await _runCommand('/usr/sbin/sysctl', ['-n', 'hw.logicalcpu']);
+      final l2Size = await _runCommand('/usr/sbin/sysctl', ['-n', 'hw.l2cachesize']);
+      final l3Size = await _runCommand('/usr/sbin/sysctl', ['-n', 'hw.l3cachesize']);
       
       newData['Processor'] = {
         'Name': procName.trim(),
@@ -219,7 +219,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         'L3 Cache': '${(int.tryParse(l3Size.trim()) ?? 0) ~/ (1024 * 1024)} MB',
       };
 
-      final ramBytes = await _runCommand('sysctl', ['-n', 'hw.memsize']);
+      final ramBytes = await _runCommand('/usr/sbin/sysctl', ['-n', 'hw.memsize']);
       final ramGB = (int.tryParse(ramBytes.trim()) ?? 0) / (1024 * 1024 * 1024);
       newData['RAM'] = {
         'Total Size': '${ramGB.toStringAsFixed(2)} GB',
@@ -227,11 +227,11 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       };
 
       // Target the Data volume for accurate user-relevant stats on modern macOS
-      final diskOutput = await _runCommand('df', ['-k', '/System/Volumes/Data']);
+      final diskOutput = await _runCommand('/bin/df', ['-k', '/System/Volumes/Data']);
       final diskLines = diskOutput.trim().split('\n');
       
       // Fallback to root if Data volume is not explicitly found (older macOS)
-      final activeLine = diskLines.length > 1 ? diskLines[1] : (await _runCommand('df', ['-k', '/'])).trim().split('\n').last;
+      final activeLine = diskLines.length > 1 ? diskLines[1] : (await _runCommand('/bin/df', ['-k', '/'])).trim().split('\n').last;
       
       final parts = activeLine.split(RegExp(r'\s+'));
       if (parts.length > 3) {
@@ -253,14 +253,14 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         };
       }
 
-      final gfxInfo = await _runCommand('system_profiler', ['SPDisplaysDataType']);
+      final gfxInfo = await _runCommand('/usr/sbin/system_profiler', ['SPDisplaysDataType']);
       newData['Graphics'] = {
         'Model': _extractLine(gfxInfo, 'Chipset Model'),
         'VRAM': _extractLine(gfxInfo, 'VRAM (Total)'),
         'Vendor': _extractLine(gfxInfo, 'Vendor'),
       };
 
-      final netInfo = await _runCommand('networksetup', ['-listallhardwareports']);
+      final netInfo = await _runCommand('/usr/sbin/networksetup', ['-listallhardwareports']);
       newData['Network'] = {
         'Port': _extractLine(netInfo, 'Hardware Port'),
         'Device': _extractLine(netInfo, 'Device'),
@@ -268,7 +268,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       };
 
       // Sensors Tab
-      final batteryInfo = await _runCommand('ioreg', ['-rn', 'AppleSmartBattery']);
+      final batteryInfo = await _runCommand('/usr/sbin/ioreg', ['-rn', 'AppleSmartBattery']);
       final bTempMatch = RegExp(r'"Temperature" = (\d+)').firstMatch(batteryInfo);
       final bCyclesMatch = RegExp(r'"CycleCount" = (\d+)').firstMatch(batteryInfo);
       final bHealthMatch = RegExp(r'"MaxCapacity" = (\d+)').firstMatch(batteryInfo);
@@ -296,11 +296,11 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
 
   Future<void> _refreshDockerData() async {
     try {
-      final dockerCheck = await _runCommand('docker', ['--version']);
+      final dockerCheck = await _runCommand('/usr/local/bin/docker', ['--version']);
       _dockerInstalled = dockerCheck.contains('Docker version');
       
       if (_dockerInstalled) {
-        final psOutput = await _runCommand('docker', ['ps', '-a', '--format', '{{.ID}}|{{.Names}}|{{.Status}}|{{.Image}}']);
+        final psOutput = await _runCommand('/usr/local/bin/docker', ['ps', '-a', '--format', '{{.ID}}|{{.Names}}|{{.Status}}|{{.Image}}']);
         final lines = psOutput.trim().split('\n');
         _dockerContainers = lines.where((l) => l.isNotEmpty).map((line) {
           final p = line.split('|');
@@ -313,7 +313,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         }).toList();
 
         // Fetch Docker disk usage
-        final dfOutput = await _runCommand('docker', ['system', 'df', '--format', '{{.Type}}: {{.Size}} ({{.Reclaimable}} reclaimable)']);
+        final dfOutput = await _runCommand('/usr/local/bin/docker', ['system', 'df', '--format', '{{.Type}}: {{.Size}} ({{.Reclaimable}} reclaimable)']);
         _dockerDiskUsage = dfOutput.trim();
       }
     } catch (_) {
@@ -337,13 +337,13 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
 
     if (confirmed == true) {
       setState(() => _dockerDiskUsage = 'Cleaning up...');
-      await _runCommand('docker', ['system', 'prune', '-af']);
+      await _runCommand('/usr/local/bin/docker', ['system', 'prune', '-af']);
       await _refreshDockerData();
     }
   }
 
   Future<void> _dockerAction(String action, String containerId) async {
-    await _runCommand('docker', [action, containerId]);
+    await _runCommand('/usr/local/bin/docker', [action, containerId]);
     await _refreshDockerData();
   }
 
@@ -356,7 +356,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
 
     try {
       // Find top 10 largest folders in home (excluding some system paths for speed)
-      final folderData = await _runCommand('sh', ['-c', 'du -sk ~/* 2>/dev/null | sort -rn | head -n 10']);
+      final folderData = await _runCommand('/bin/sh', ['-c', '/usr/bin/du -sk ~/* 2>/dev/null | sort -rn | head -n 10']);
       _largeFolders = folderData.trim().split('\n').where((l) => l.isNotEmpty).map((line) {
         final parts = line.split(RegExp(r'\s+'));
         final sizeKB = double.tryParse(parts[0]) ?? 0.0;
@@ -367,7 +367,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       }).toList();
 
       // Find top 10 largest files in home (>50MB)
-      final fileData = await _runCommand('sh', ['-c', 'find ~ -type f -size +50M -exec du -k {} + 2>/dev/null | sort -rn | head -n 10']);
+      final fileData = await _runCommand('/bin/sh', ['-c', '/usr/bin/find ~ -type f -size +50M -exec /usr/bin/du -k {} + 2>/dev/null | sort -rn | head -n 10']);
       _largeFiles = fileData.trim().split('\n').where((l) => l.isNotEmpty).map((line) {
         final parts = line.split(RegExp(r'\s+'));
         final sizeKB = double.tryParse(parts[0]) ?? 0.0;
@@ -402,13 +402,13 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     );
 
     if (confirmed == true) {
-      await _runCommand('rm', ['-rf', path]);
+      await _runCommand('/bin/rm', ['-rf', path]);
       _analyzeDiskSpace(); // Re-scan
     }
   }
 
   Future<void> _openInFinder(String path) async {
-    await _runCommand('open', ['-R', path]); // -R reveals in Finder
+    await _runCommand('/usr/bin/open', ['-R', path]); // -R reveals in Finder
   }
 
   String _extractLine(String output, String label) {
@@ -422,8 +422,14 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   Future<String> _runCommand(String command, List<String> args) async {
     try {
       final result = await Process.run(command, args);
+      if (result.exitCode != 0) {
+        debugPrint('Command failed: $command ${args.join(' ')} -> ${result.stderr}');
+      }
       return result.stdout.toString();
-    } catch (e) { return ''; }
+    } catch (e) { 
+      debugPrint('Error running command $command: $e');
+      return ''; 
+    }
   }
 
   @override
